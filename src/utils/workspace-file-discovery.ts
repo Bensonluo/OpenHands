@@ -123,11 +123,17 @@ export function buildWindowsWorkspaceFileListCommand(
           `\\${pattern.toLowerCase()}\\`,
         ),
     )
-    .map((pattern) => `/c:"\\${pattern}\\"`);
+    // findstr reads `\` before a closing quote as an escaped quote, so a bare
+    // search string like `\node_modules\` mangles the argument list and the
+    // exclusion never matches. Escape every backslash in the pattern and match
+    // literally (`/l`), so `/c:"\\node_modules\\"` decodes to `\node_modules\`.
+    .map((pattern) => `/c:"\\\\${pattern.replaceAll("\\", "\\\\")}\\\\"`);
   const filter = excludes.length
-    ? ` | findstr /v /i ${excludes.join(" ")}`
+    ? ` | findstr /v /i /l ${excludes.join(" ")}`
     : "";
-  return `dir /b /s /a:-d 2>nul${filter} | sort`;
+  // Windows `sort` reserves up to 90% of available memory by default; cap it
+  // so a slow or orphaned sort.exe cannot balloon to gigabytes.
+  return `dir /b /s /a:-d 2>nul${filter} | sort /M 65536`;
 }
 
 export function parseWindowsWorkspaceFileList(

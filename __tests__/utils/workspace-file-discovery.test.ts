@@ -18,73 +18,78 @@ import {
 } from "#/utils/workspace-file-discovery";
 
 // @spec WFD-001 — Configurable local workspace discovery
-describe("workspace file discovery", () => {
-  let workspace: string;
-  beforeEach(() => {
-    workspace = mkdtempSync(join(tmpdir(), "workspace-discovery-"));
-    for (const directory of [
-      "bin",
-      "nested/bin",
-      "obj",
-      "node_modules",
-      "quoted'$(touch injected)",
-    ]) {
-      mkdirSync(join(workspace, directory), { recursive: true });
-      writeFileSync(join(workspace, directory, "file.txt"), "fixture");
-    }
-    writeFileSync(join(workspace, "instructions.md"), "fixture");
-    symlinkSync("instructions.md", join(workspace, "AGENTS.md"));
-    symlinkSync("nested", join(workspace, "directory-link"));
-  });
-  afterEach(() => rmSync(workspace, { recursive: true, force: true }));
-
-  const list = (options = DEFAULT_FILE_DISCOVERY) =>
-    parseWorkspaceFileList(
-      execSync(buildWorkspaceFileListCommand(options), {
-        cwd: workspace,
-        encoding: "utf8",
-      }),
-      options.maxFiles,
-    );
-
-  it("preserves default exclusions and omits symlinks", () => {
-    const result = list();
-    expect(result.paths).toContain("bin/file.txt");
-    expect(result.paths).not.toContain("node_modules/file.txt");
-    expect(result.paths).not.toContain("AGENTS.md");
-    expect(result.isTruncated).toBe(false);
-  });
-
-  it("prunes configured directories safely while preserving root bin and including file symlinks", () => {
-    const result = list({
-      maxFiles: 0,
-      includeSymlinks: true,
-      excludedPatterns: ["*/bin", "obj", "quoted'$(touch injected)"],
+// This suite executes `find` through a Unix shell, so it cannot run on a
+// Windows host (the Windows suite below covers the cmd.exe pipeline there).
+describe.skipIf(process.platform === "win32")(
+  "workspace file discovery",
+  () => {
+    let workspace: string;
+    beforeEach(() => {
+      workspace = mkdtempSync(join(tmpdir(), "workspace-discovery-"));
+      for (const directory of [
+        "bin",
+        "nested/bin",
+        "obj",
+        "node_modules",
+        "quoted'$(touch injected)",
+      ]) {
+        mkdirSync(join(workspace, directory), { recursive: true });
+        writeFileSync(join(workspace, directory, "file.txt"), "fixture");
+      }
+      writeFileSync(join(workspace, "instructions.md"), "fixture");
+      symlinkSync("instructions.md", join(workspace, "AGENTS.md"));
+      symlinkSync("nested", join(workspace, "directory-link"));
     });
-    expect(result.paths).toEqual([
-      "AGENTS.md",
-      "bin/file.txt",
-      "instructions.md",
-      "node_modules/file.txt",
-    ]);
-  });
+    afterEach(() => rmSync(workspace, { recursive: true, force: true }));
 
-  it("detects overflow without warning at an exact limit and removes the cap when unlimited", () => {
-    for (let index = 0; index < 2001; index += 1) {
-      writeFileSync(join(workspace, `${index}.txt`), "fixture");
-    }
-    expect(list().paths).toHaveLength(2000);
-    expect(list().isTruncated).toBe(true);
-    const unlimited = list({ ...DEFAULT_FILE_DISCOVERY, maxFiles: 0 });
-    expect(unlimited.paths.length).toBeGreaterThan(2000);
-    expect(unlimited.isTruncated).toBe(false);
-    const exact = list({
-      ...DEFAULT_FILE_DISCOVERY,
-      maxFiles: unlimited.paths.length,
+    const list = (options = DEFAULT_FILE_DISCOVERY) =>
+      parseWorkspaceFileList(
+        execSync(buildWorkspaceFileListCommand(options), {
+          cwd: workspace,
+          encoding: "utf8",
+        }),
+        options.maxFiles,
+      );
+
+    it("preserves default exclusions and omits symlinks", () => {
+      const result = list();
+      expect(result.paths).toContain("bin/file.txt");
+      expect(result.paths).not.toContain("node_modules/file.txt");
+      expect(result.paths).not.toContain("AGENTS.md");
+      expect(result.isTruncated).toBe(false);
     });
-    expect(exact).toEqual(unlimited);
-  });
-});
+
+    it("prunes configured directories safely while preserving root bin and including file symlinks", () => {
+      const result = list({
+        maxFiles: 0,
+        includeSymlinks: true,
+        excludedPatterns: ["*/bin", "obj", "quoted'$(touch injected)"],
+      });
+      expect(result.paths).toEqual([
+        "AGENTS.md",
+        "bin/file.txt",
+        "instructions.md",
+        "node_modules/file.txt",
+      ]);
+    });
+
+    it("detects overflow without warning at an exact limit and removes the cap when unlimited", () => {
+      for (let index = 0; index < 2001; index += 1) {
+        writeFileSync(join(workspace, `${index}.txt`), "fixture");
+      }
+      expect(list().paths).toHaveLength(2000);
+      expect(list().isTruncated).toBe(true);
+      const unlimited = list({ ...DEFAULT_FILE_DISCOVERY, maxFiles: 0 });
+      expect(unlimited.paths.length).toBeGreaterThan(2000);
+      expect(unlimited.isTruncated).toBe(false);
+      const exact = list({
+        ...DEFAULT_FILE_DISCOVERY,
+        maxFiles: unlimited.paths.length,
+      });
+      expect(exact).toEqual(unlimited);
+    });
+  },
+);
 
 describe("Windows workspace discovery", () => {
   const options = {
@@ -99,7 +104,7 @@ describe("Windows workspace discovery", () => {
       "C:\\Users\\me\\proj",
     );
     expect(command).toBe(
-      'dir /b /s /a:-d 2>nul | findstr /v /i /c:"\\node_modules\\" /c:"\\.git\\" /c:"\\src\\generated\\" | sort',
+      'dir /b /s /a:-d 2>nul | findstr /v /i /l /c:"\\\\node_modules\\\\" /c:"\\\\.git\\\\" /c:"\\\\src\\\\generated\\\\" | sort /M 65536',
     );
     expect(command).not.toMatch(/head|\/dev\/null|^find /);
   });
@@ -110,7 +115,7 @@ describe("Windows workspace discovery", () => {
       "C:\\build\\node_modules\\proj",
     );
     expect(command).not.toContain("node_modules");
-    expect(command).toContain('/c:"\\.git\\"');
+    expect(command).toContain('/c:"\\\\.git\\\\"');
   });
 
   it("drops patterns that cmd.exe could misread", () => {
@@ -119,7 +124,25 @@ describe("Windows workspace discovery", () => {
       "C:\\proj",
     );
     expect(command).toBe(
-      'dir /b /s /a:-d 2>nul | findstr /v /i /c:"\\ok\\" | sort',
+      'dir /b /s /a:-d 2>nul | findstr /v /i /l /c:"\\\\ok\\\\" | sort /M 65536',
+    );
+  });
+
+  it("bounds sort memory even when no exclusions survive filtering", () => {
+    const command = buildWindowsWorkspaceFileListCommand(
+      { ...options, excludedPatterns: [] },
+      "C:\\proj",
+    );
+    expect(command).toBe("dir /b /s /a:-d 2>nul | sort /M 65536");
+  });
+
+  it("strips a leading ./ from a pattern before escaping it", () => {
+    const command = buildWindowsWorkspaceFileListCommand(
+      { ...options, excludedPatterns: ["./dist"] },
+      "C:\\proj",
+    );
+    expect(command).toBe(
+      'dir /b /s /a:-d 2>nul | findstr /v /i /l /c:"\\\\dist\\\\" | sort /M 65536',
     );
   });
 
@@ -145,3 +168,62 @@ describe("Windows workspace discovery", () => {
     expect(result.isTruncated).toBe(true);
   });
 });
+
+// findstr's argument parsing cannot be exercised from a non-Windows host, and
+// string-shape assertions are exactly how the broken command shipped. On a
+// Windows host, run the generated pipeline for real against a fixture tree:
+// `src/generated` contains a path separator, so the client-side parser cannot
+// drop it — only a working findstr stage keeps it out of the listing.
+describe.skipIf(process.platform !== "win32")(
+  "Windows workspace discovery on a Windows host",
+  () => {
+    let workspace: string;
+
+    beforeEach(() => {
+      workspace = mkdtempSync(join(tmpdir(), "windows-discovery-"));
+      for (const directory of [
+        ".git/objects",
+        "node_modules/pkg",
+        "src/generated",
+        "src",
+      ]) {
+        mkdirSync(join(workspace, directory), { recursive: true });
+      }
+      for (const file of [
+        "README.md",
+        "src/index.ts",
+        ".git/config",
+        ".git/objects/obj1",
+        "node_modules/pkg/index.js",
+        "src/generated/gen.ts",
+      ]) {
+        writeFileSync(join(workspace, file), "fixture");
+      }
+    });
+
+    afterEach(() => rmSync(workspace, { recursive: true, force: true }));
+
+    it("excludes excluded folders when the pipeline runs through cmd.exe", () => {
+      const windowsOptions = {
+        ...DEFAULT_FILE_DISCOVERY,
+        excludedPatterns: [".git", "node_modules", "src/generated"],
+        maxFiles: 0,
+      };
+      const command = buildWindowsWorkspaceFileListCommand(
+        windowsOptions,
+        workspace,
+      );
+      const stdout = execSync(command, {
+        cwd: workspace,
+        encoding: "utf8",
+      });
+      const result = parseWindowsWorkspaceFileList(
+        stdout,
+        workspace,
+        windowsOptions,
+      );
+      expect([...result.paths].sort()).toEqual(["README.md", "src/index.ts"]);
+      expect(result.isTruncated).toBe(false);
+    });
+  },
+);
