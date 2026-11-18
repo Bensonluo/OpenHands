@@ -1,0 +1,83 @@
+name: win-repro
+
+# Windows/WSL 复现工作流——fork 上跑真 Windows Server + WSL2，解锁本机 macOS 无法复现的 issue。
+# 用法：
+#   gh workflow run win-repro.yml --repo <fork> --ref <branch> -f ref=<branch> -f pwsh="..." -f wsl="..." -f buntest="path/a.test.ts path/b.test.ts"
+#   gh run list --repo <fork> --workflow=win-repro.yml   # 查结果
+# 输入可留空；pwsh/wsl/buntest 至少填一个；每次 run 约 2-5 分钟，公共 fork 免费额度。
+# 注意：workflow_dispatch 只认 fork 默认分支上存在的 workflow 文件——先推本文件到 fork main，
+# --ref 控制 checkout 代码（配合 ref 输入），不控制 workflow 文件本身的位置。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or SHA to check out"
+        required: false
+        default: main
+      pwsh:
+        description: "PowerShell repro script (runs on Windows host)"
+        required: false
+        default: ""
+      wsl:
+        description: "Bash repro script (runs inside WSL2 Ubuntu)"
+        required: false
+        default: ""
+      buntest:
+        description: "bun test file paths (space separated)"
+        required: false
+        default: ""
+
+jobs:
+  repro:
+    runs-on: windows-latest   # 真 Windows Server x64，WSL 功能已启用
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Bun
+        if: ${{ inputs.buntest != '' }}
+        shell: pwsh
+        run: |
+          irm bun.sh/install.ps1 | iex
+          "C:\Users\runneradmin\.bun\bin" >> $env:GITHUB_PATH
+
+      - name: Install dependencies
+        if: ${{ inputs.buntest != '' }}
+        shell: pwsh
+        run: bun install --frozen-lockfile
+
+      - name: Run bun tests
+        if: ${{ inputs.buntest != '' }}
+        shell: pwsh
+        run: bun test ${{ inputs.buntest }}
+
+      - name: Run PowerShell repro
+        if: ${{ inputs.pwsh != '' }}
+        shell: pwsh
+        run: |
+          ${{ inputs.pwsh }}
+
+      - name: Install WSL2 Ubuntu
+        if: ${{ inputs.wsl != '' }}
+        shell: pwsh
+        run: |
+          wsl --install -d Ubuntu --no-launch
+          $deadline = (Get-Date).AddMinutes(5)
+          while ((wsl -l -q) -notcontains "Ubuntu") {
+            if ((Get-Date) -gt $deadline) { throw "WSL Ubuntu not registered in time" }
+            Start-Sleep -Seconds 5
+          }
+
+      # 关键：pwsh here-string 每行结尾是 CRLF，直接 pipe 给 bash 会把 \r 当成命令的一部分
+      # （报 `$'xxx\r': command not found`）。必须先去 \r 再 pipe。
+      - name: Run WSL repro
+        if: ${{ inputs.wsl != '' }}
+        shell: pwsh
+        run: |
+          $script = @'
+          ${{ inputs.wsl }}
+          '@
+          ($script -replace "`r", "") | wsl -d Ubuntu bash -s
