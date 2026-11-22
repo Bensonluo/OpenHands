@@ -1,0 +1,26 @@
+Provenance for the outgoing-head captures (scripts at 51f8fcd), 2026-11-23 CST.
+
+Container: oh19945-r15 (67eea1c4…), image ghcr.io/openhands/agent-canvas:1.43.0
+(local image ID sha256:bcdbb3fb…ad8c3c28697d6ff3f4adae55c15c3f1d), started
+2026-11-22T16:59Z, port 127.0.0.1:18006->8000, env
+AGENT_CANVAS_ALLOW_LAN_SESSION_KEY=true, a named state volume, a projects
+directory mount, and two read-only script bind mounts under
+/opt/agent-canvas/. Host-side paths are omitted.
+
+In-container script SHA-256 (captured after the runs, equal to the outgoing
+head's scripts):
+  static-server.mjs  67e013677f5f5f6cc3cdb88487303ced44b97158cc6cf81451afbfa31cd78d2c
+  proxy-utils.mjs    d1b06403ceaa146f3ed57fb42822d804b581a2d7915a9c8f2b057e2c6cbccf00
+
+Canvas conversation launch (direct HTTP, 2026-11-23 01:02-01:03 CST): an
+existing conversation from the shared state volume was opened in headless
+Chromium; the panel's VS Code control opened the same-origin /vscode route in
+a new tab; the workbench rendered with no error dialog (captures:
+canvas-launch-51f8fcd-page.png, canvas-launch-51f8fcd-popup0.png). The
+workspace folder name shown in the panel belongs to that reused conversation
+and is not a revision marker.
+
+TLS no-X-Forwarded-Port checks (2026-11-23 01:15-01:17 CST): edge ports 19460
+(fixed, upstream 18006) and 19461 (stock container oh19945-stock, image's own
+scripts); statuses in the redacted receipt files in this directory. Wire logs
+and unredacted originals are local-only.

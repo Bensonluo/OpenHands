@@ -1,0 +1,38 @@
+{
+ "variant": "51f8fcd-noxfp-fixed",
+ "edgeOrigin": "https://localhost:19460",
+ "startedAt": "2026-11-22T17:07:09.277Z",
+ "steps": [
+  {
+   "step": "tkn-exchange",
+   "status": 303,
+   "location": "/vscode/?folder=workspace",
+   "setCookieAttrs": [
+    "openhands_editor_75c8c72e0ec6f1e8=<redacted>; Path=/vscode; HttpOnly; Secure; SameSite=None"
+   ]
+  },
+  {
+   "step": "exchange-target-with-cookie",
+   "status": 200,
+   "bodyLen": 5787
+  },
+  {
+   "step": "upgrade-matching-origin-with-cookie",
+   "status": 101,
+   "tls": "TLSv1.3",
+   "cipher": "TLS_AES_256_GCM_SHA384"
+  },
+  {
+   "step": "upgrade-mismatched-origin",
+   "status": 401,
+   "body": ""
+  },
+  {
+   "step": "upgrade-matching-origin-no-cookie",
+   "status": 401,
+   "body": ""
+  }
+ ],
+ "finishedAt": "2026-11-22T17:07:09.451Z",
+ "note": "Sanitized copy: cookie and token values redacted; statuses unchanged. Original kept local."
+}
